@@ -1,0 +1,19 @@
+{
+  "name": "cdn",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun dev.ts",
+    "dev:client": "bun --env-file=.env run --cwd client dev",
+    "dev:server": "bun --env-file=.env run --cwd server start",
+    "typecheck": "cd client && bun run typecheck && cd ../server && bun run typecheck",
+    "build": "cd client && bun run build && cd ../server && bun run typecheck",
+    "test": "cd server && bun test",
+    "lint": "cd client && bun run lint",
+    "verify": "bun run typecheck && bun run build && bun run test && bun run lint",
+    "admin:grant": "cd server && bun run admin:grant",
+    "admin:revoke": "cd server && bun run admin:revoke",
+    "sweep": "cd server && bun run sweep"
+  }
+}
