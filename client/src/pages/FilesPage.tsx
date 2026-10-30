@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import {
   ChevronDown,
   CloudUpload,
@@ -55,6 +55,7 @@ import type {
   Visibility,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { shortenWithVoidUrl } from "@/lib/shorten"
 
 type QueueStatus = "queued" | "uploading" | "finalizing" | "done" | "error"
 
@@ -154,6 +155,7 @@ export function FilesPage() {
   const [deleting, setDeleting] = useState<FileItem | null>(null)
   const [deletingBusy, setDeletingBusy] = useState(false)
   const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number; up: boolean } | null>(null)
 
   const limit = 24
   const maxUpload = stats?.maxUploadBytes ?? null
@@ -302,6 +304,64 @@ export function FilesPage() {
       toast.addToast(ok ? "Link copied" : "Could not copy the link", ok ? "success" : "error")
     } catch (err) {
       toast.addToast(err instanceof ApiError ? err.message : "Could not create a link.", "error")
+    }
+  }
+
+  const closeFileMenu = useCallback(() => {
+    setMenuFor(null)
+    setMenuPos(null)
+  }, [])
+
+  // The actions menu renders fixed so the file card's overflow can never clip
+  // it; close it on any scroll or resize instead of tracking the button.
+  useEffect(() => {
+    if (!menuFor) return
+    const onViewportChange = () => closeFileMenu()
+    window.addEventListener("scroll", onViewportChange, true)
+    window.addEventListener("resize", onViewportChange)
+    return () => {
+      window.removeEventListener("scroll", onViewportChange, true)
+      window.removeEventListener("resize", onViewportChange)
+    }
+  }, [menuFor, closeFileMenu])
+
+  const openFileMenu = (event: ReactMouseEvent<HTMLButtonElement>, file: FileItem) => {
+    if (menuFor === file.id) {
+      closeFileMenu()
+      return
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    // Rough menu height (5 rows); flip above the button when it would overflow.
+    const menuHeight = 214
+    const up = rect.bottom + menuHeight > window.innerHeight - 8
+    setMenuPos({
+      top: up ? rect.top - 6 : rect.bottom + 6,
+      right: Math.max(8, window.innerWidth - rect.right),
+      up,
+    })
+    setMenuFor(file.id)
+  }
+
+  const shortenLink = async (file: FileItem) => {
+    closeFileMenu()
+    const base = config?.shortener?.url
+    if (!base) {
+      toast.addToast("Link shortening is not configured.", "error")
+      return
+    }
+    try {
+      const data = await get<{ url: string }>(`/api/files/${file.id}/url`)
+      const short = await shortenWithVoidUrl(base, absoluteUrl(data.url))
+      const copied = await copyText(short.shortUrl)
+      toast.addToast(
+        copied ? `Short link copied: ${short.shortUrl}` : short.shortUrl,
+        "success",
+      )
+    } catch (err) {
+      toast.addToast(
+        err instanceof ApiError || err instanceof Error ? err.message : "Could not shorten the link.",
+        "error",
+      )
     }
   }
 
@@ -719,15 +779,23 @@ export function FilesPage() {
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      onClick={() => setMenuFor((value) => (value === file.id ? null : file.id))}
+                      onClick={(event) => openFileMenu(event, file)}
                       aria-label="File actions"
+                      aria-expanded={menuFor === file.id}
                     >
                       <MoreHorizontal />
                     </Button>
-                    {menuFor === file.id && (
+                    {menuFor === file.id && menuPos && (
                       <>
-                        <div className="fixed inset-0 z-30" onClick={() => setMenuFor(null)} />
-                        <div className="absolute right-0 top-full z-40 mt-1 w-40 overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-lg">
+                        <div className="fixed inset-0 z-40" onClick={closeFileMenu} />
+                        <div
+                          className="fixed z-50 w-44 overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-lg"
+                          style={{
+                            top: menuPos.top,
+                            right: menuPos.right,
+                            transform: menuPos.up ? "translateY(-100%)" : undefined,
+                          }}
+                        >
                           <button
                             type="button"
                             onClick={() => beginEdit(file)}
@@ -738,17 +806,26 @@ export function FilesPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setMenuFor(null)
+                              closeFileMenu()
                               void copyLink(file)
                             }}
                             className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-muted/60"
                           >
                             <Copy className="size-3" /> Copy link
                           </button>
+                          {file.visibility !== "private" && (
+                            <button
+                              type="button"
+                              onClick={() => void shortenLink(file)}
+                              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-muted/60"
+                            >
+                              <Link2 className="size-3" /> Shorten link
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
-                              setMenuFor(null)
+                              closeFileMenu()
                               openFile(file)
                             }}
                             className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-muted/60"
@@ -759,14 +836,14 @@ export function FilesPage() {
                           <a
                             href={absoluteUrl(file.downloadUrl)}
                             className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-muted/60"
-                            onClick={() => setMenuFor(null)}
+                            onClick={closeFileMenu}
                           >
                             <Download className="size-3" /> Download
                           </a>
                           <button
                             type="button"
                             onClick={() => {
-                              setMenuFor(null)
+                              closeFileMenu()
                               setDeleting(file)
                             }}
                             className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10"

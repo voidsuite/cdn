@@ -21,6 +21,8 @@ export type UploadMode = "auto" | "presigned" | "proxy"
 const config = {
   port: int(process.env.PORT, 3007),
   appUrl: trim(process.env.APP_URL) || "http://localhost:5180",
+  // Void Links (URL shortener) used by the "Shorten link" file action.
+  voidUrl: (trim(process.env.VOIDURL_URL) || "https://url.voidsuite.cc").replace(/\/+$/, ""),
   voidauthUrl: (trim(process.env.VOIDAUTH_URL) || "https://auth.stwupid.tech").replace(/\/+$/, ""),
   clientId: trim(process.env.VOIDCDN_CLIENT_ID) || "voidcdn",
   clientSecret: trim(process.env.VOIDCDN_CLIENT_SECRET),

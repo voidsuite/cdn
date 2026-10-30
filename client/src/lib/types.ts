@@ -165,6 +165,9 @@ export interface AuditEntry {
 
 export interface RuntimeConfig {
   appUrl: string
+  shortener: {
+    url: string
+  }
   driver: string
   uploadMode: "presigned" | "proxy"
   supportsPresigned: boolean

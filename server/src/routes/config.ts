@@ -13,6 +13,7 @@ configRoutes.get("/config", (c) => {
   const settings = getSettings()
   return c.json({
     appUrl: config.appUrl,
+    shortener: { url: config.voidUrl },
     driver: storage.name,
     uploadMode: uploadModeForDriver(),
     supportsPresigned: storage.supportsPresign,
