@@ -59,10 +59,13 @@ function isEditableTarget(target: EventTarget | null) {
 export function ThemeProvider({
   children,
   defaultTheme = "system",
-  storageKey: _storageKey,
+  storageKey,
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
+  // The shared appearance module owns storage; the prop is kept for callers
+  // that still pass a per-app key.
+  void storageKey
   const initial = React.useMemo(() => readAppearance(), [])
   const [theme, setThemeState] = React.useState<Theme>(initial.theme ?? defaultTheme)
   const [accent, setAccentState] = React.useState<AccentId>(initial.accent)
