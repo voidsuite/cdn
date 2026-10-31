@@ -1,8 +1,16 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
-
-type Theme = "dark" | "light" | "system"
-type ResolvedTheme = "dark" | "light"
+import {
+  applyAppearance,
+  isAccent,
+  isTheme,
+  readAppearance,
+  resolveTheme,
+  writeAppearance,
+  type AccentId,
+  type ResolvedTheme,
+  type Theme,
+} from "@/lib/appearance"
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -13,38 +21,22 @@ type ThemeProviderProps = {
 
 type ThemeProviderState = {
   theme: Theme
+  accent: AccentId
+  resolvedTheme: ResolvedTheme
   setTheme: (theme: Theme) => void
+  setAccent: (accent: AccentId) => void
 }
 
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
-const THEME_VALUES: Theme[] = ["dark", "light", "system"]
 
-const ThemeProviderContext = React.createContext<
-  ThemeProviderState | undefined
->(undefined)
-
-function isTheme(value: string | null): value is Theme {
-  if (value === null) {
-    return false
-  }
-
-  return THEME_VALUES.includes(value as Theme)
-}
-
-function getSystemTheme(): ResolvedTheme {
-  if (window.matchMedia(COLOR_SCHEME_QUERY).matches) {
-    return "dark"
-  }
-
-  return "light"
-}
+const ThemeProviderContext = React.createContext<ThemeProviderState | undefined>(undefined)
 
 function disableTransitionsTemporarily() {
   const style = document.createElement("style")
   style.appendChild(
     document.createTextNode(
-      "*,*::before,*::after{-webkit-transition:none!important;transition:none!important}"
-    )
+      "*,*::before,*::after{-webkit-transition:none!important;transition:none!important}",
+    ),
   )
   document.head.appendChild(style)
 
@@ -59,157 +51,78 @@ function disableTransitionsTemporarily() {
 }
 
 function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-
-  if (target.isContentEditable) {
-    return true
-  }
-
-  const editableParent = target.closest(
-    "input, textarea, select, [contenteditable='true']"
-  )
-  if (editableParent) {
-    return true
-  }
-
-  return false
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
 }
 
 export function ThemeProvider({
   children,
   defaultTheme = "system",
-  storageKey = "theme",
+  storageKey: _storageKey,
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = React.useState<Theme>(() => {
-    const storedTheme = localStorage.getItem(storageKey)
-    if (isTheme(storedTheme)) {
-      return storedTheme
-    }
+  const initial = React.useMemo(() => readAppearance(), [])
+  const [theme, setThemeState] = React.useState<Theme>(initial.theme ?? defaultTheme)
+  const [accent, setAccentState] = React.useState<AccentId>(initial.accent)
 
-    return defaultTheme
-  })
+  const setTheme = React.useCallback((nextTheme: Theme) => {
+    writeAppearance({ theme: nextTheme, accent })
+    setThemeState(nextTheme)
+  }, [accent])
 
-  const setTheme = React.useCallback(
-    (nextTheme: Theme) => {
-      localStorage.setItem(storageKey, nextTheme)
-      setThemeState(nextTheme)
-    },
-    [storageKey]
-  )
-
-  const applyTheme = React.useCallback(
-    (nextTheme: Theme) => {
-      const root = document.documentElement
-      const resolvedTheme =
-        nextTheme === "system" ? getSystemTheme() : nextTheme
-      const restoreTransitions = disableTransitionOnChange
-        ? disableTransitionsTemporarily()
-        : null
-
-      root.classList.remove("light", "dark")
-      root.classList.add(resolvedTheme)
-
-      if (restoreTransitions) {
-        restoreTransitions()
-      }
-    },
-    [disableTransitionOnChange]
-  )
+  const setAccent = React.useCallback((nextAccent: AccentId) => {
+    writeAppearance({ theme, accent: nextAccent })
+    setAccentState(nextAccent)
+  }, [theme])
 
   React.useEffect(() => {
-    applyTheme(theme)
+    const restoreTransitions = disableTransitionOnChange ? disableTransitionsTemporarily() : null
+    applyAppearance({ theme, accent })
+    if (restoreTransitions) restoreTransitions()
+  }, [theme, accent, disableTransitionOnChange])
 
-    if (theme !== "system") {
-      return undefined
-    }
-
+  React.useEffect(() => {
+    if (theme !== "system") return undefined
     const mediaQuery = window.matchMedia(COLOR_SCHEME_QUERY)
-    const handleChange = () => {
-      applyTheme("system")
-    }
-
+    const handleChange = () => applyAppearance({ theme: "system", accent })
     mediaQuery.addEventListener("change", handleChange)
-
-    return () => {
-      mediaQuery.removeEventListener("change", handleChange)
-    }
-  }, [theme, applyTheme])
+    return () => mediaQuery.removeEventListener("change", handleChange)
+  }, [theme, accent])
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat) {
-        return
-      }
+      if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return
+      if (isEditableTarget(event.target)) return
+      if (event.key.toLowerCase() !== "d") return
 
-      if (event.metaKey || event.ctrlKey || event.altKey) {
-        return
-      }
-
-      if (isEditableTarget(event.target)) {
-        return
-      }
-
-      if (event.key.toLowerCase() !== "d") {
-        return
-      }
-
-      setThemeState((currentTheme) => {
-        const nextTheme =
-          currentTheme === "dark"
-            ? "light"
-            : currentTheme === "light"
-              ? "dark"
-              : getSystemTheme() === "dark"
-                ? "light"
-                : "dark"
-
-        localStorage.setItem(storageKey, nextTheme)
-        return nextTheme
-      })
+      const nextTheme = resolveTheme(theme) === "dark" ? "light" : "dark"
+      writeAppearance({ theme: nextTheme, accent })
+      setThemeState(nextTheme)
     }
-
     window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [theme, accent])
 
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [storageKey])
-
+  // Keep same-origin tabs in sync (cookie syncs across *.voidsuite.cc on load).
   React.useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.storageArea !== localStorage) {
-        return
-      }
-
-      if (event.key !== storageKey) {
-        return
-      }
-
-      if (isTheme(event.newValue)) {
-        setThemeState(event.newValue)
-        return
-      }
-
-      setThemeState(defaultTheme)
+      if (event.storageArea !== localStorage) return
+      if (event.key !== "theme" && event.key !== "void-accent") return
+      const next = readAppearance()
+      setThemeState(isTheme(next.theme) ? next.theme : defaultTheme)
+      if (isAccent(next.accent)) setAccentState(next.accent)
     }
-
     window.addEventListener("storage", handleStorageChange)
+    return () => window.removeEventListener("storage", handleStorageChange)
+  }, [defaultTheme])
 
-    return () => {
-      window.removeEventListener("storage", handleStorageChange)
-    }
-  }, [defaultTheme, storageKey])
+  const resolvedTheme = resolveTheme(theme)
 
   const value = React.useMemo(
-    () => ({
-      theme,
-      setTheme,
-    }),
-    [theme, setTheme]
+    () => ({ theme, accent, resolvedTheme, setTheme, setAccent }),
+    [theme, accent, resolvedTheme, setTheme, setAccent],
   )
 
   return (
@@ -221,10 +134,8 @@ export function ThemeProvider({
 
 export const useTheme = () => {
   const context = React.useContext(ThemeProviderContext)
-
   if (context === undefined) {
     throw new Error("useTheme must be used within a ThemeProvider")
   }
-
   return context
 }

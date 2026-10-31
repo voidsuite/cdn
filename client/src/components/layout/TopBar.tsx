@@ -4,6 +4,7 @@ import { FolderOpen, KeyRound, LogOut, Settings, ShieldCheck } from "lucide-reac
 import { useAuth } from "@/contexts/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { VoidLogo } from "@/components/VoidLogo"
+import { AppearanceMenu } from "@/components/layout/AppearanceMenu"
 import { initials } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -80,6 +81,7 @@ export function TopBar() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          <AppearanceMenu />
           <div className="relative" ref={menuRef}>
             <button
               type="button"
